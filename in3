@@ -1,0 +1,159 @@
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense, Dropout, BatchNormalization, Flatten, concatenate, Activation, Reshape
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.utils import plot_model
+from keras.utils import np_utils
+import numpy as np
+from time import ctime
+from PIL import Image
+import pickle
+import glob
+import os
+import tensorflow as tf
+
+
+def Conv2d_BN(x, nb_filter, kernel_size, padding='same', strides=(1, 1), name=None):
+    if name is not None:
+        bn_name = name + '_bn'
+        conv_name = name + '_conv'
+    else:
+        bn_name = None
+        conv_name = None
+
+    x = Conv2D(nb_filter, kernel_size, padding=padding, strides=strides, name=conv_name)(x)
+    x = BatchNormalization(axis=3, name=bn_name)(x)
+    x = Activation('relu')(x)
+    return x
+
+
+def InceptionT1(x, nb_filter, strides=(1, 1)):
+    branch1 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (3, 3), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (3, 3), padding='same', strides=strides, name=None)
+
+    branch2 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+    branch2 = Conv2d_BN(branch2, nb_filter, (3, 3), padding='same', strides=strides, name=None)
+
+    branch3 = MaxPooling2D(pool_size=(3, 3), strides=strides, padding='same')(x)
+    branch3 = Conv2d_BN(branch3, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+
+    branch4 = Conv2d_BN(x, nb_filter, (1, 1), padding='valid', strides=strides, name=None)
+    # branch4 = tf.reshape(branch4,(17,17,192))
+
+    x = concatenate([branch1, branch2, branch3, branch4], axis=3)
+
+    return x
+
+
+def InceptionT2(x, nb_filter, strides=(1, 1), stride1=(1, 1), stride2=(1, 1)):
+    branch1 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (1, 7), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (7, 1), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (1, 7), padding='same', strides=stride1, name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (7, 1), padding='same', strides=stride2, name=None)
+
+    branch2 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+    branch2 = Conv2d_BN(branch2, nb_filter, (1, 7), padding='same', strides=stride1, name=None)
+    branch2 = Conv2d_BN(branch2, nb_filter, (7, 1), padding='same', strides=stride2, name=None)
+
+    branch3 = MaxPooling2D(pool_size=(3, 3), strides=strides, padding='same')(x)
+    branch3 = Conv2d_BN(branch3, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+
+    branch4 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=strides, name=None)
+
+    x = concatenate([branch1, branch2, branch3, branch4], axis=3)
+
+    return x
+
+
+def InceptionT3(x, nb_filter, strides=(1, 1)):
+    branch1 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+    branch1 = Conv2d_BN(branch1, nb_filter, (3, 3), padding='same', strides=strides, name=None)
+    branch1_1 = Conv2d_BN(branch1, nb_filter, (1, 3), padding='same', strides=(1, 1), name=None)
+    branch1_2 = Conv2d_BN(branch1, nb_filter, (3, 1), padding='same', strides=(1, 1), name=None)
+
+    branch2 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=strides, name=None)
+    branch2_1 = Conv2d_BN(branch2, nb_filter, (1, 3), padding='same', strides=(1, 1), name=None)
+    branch2_2 = Conv2d_BN(branch2, nb_filter, (3, 1), padding='same', strides=(1, 1), name=None)
+
+    branch3 = MaxPooling2D(pool_size=(3, 3), strides=strides, padding='same')(x)
+    branch3 = Conv2d_BN(branch3, nb_filter, (1, 1), padding='same', strides=(1, 1), name=None)
+
+    branch4 = Conv2d_BN(x, nb_filter, (1, 1), padding='same', strides=strides, name=None)
+
+    x = concatenate([branch1_1, branch1_2, branch2_1, branch2_2, branch3, branch4], axis=3)
+
+    return x
+
+
+def creatcnn():
+    inpt = Input(shape=(299, 299, 3))
+    x = Conv2d_BN(inpt, 32, (3, 3), strides=(2, 2), padding='valid')  # (149,149)32
+    x = Conv2d_BN(x, 32, (3, 3), strides=(1, 1), padding='valid')  # (147,147)32
+    x = Conv2d_BN(x, 64, (3, 3), strides=(1, 1), padding='same')  # (147,147)64
+    x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid')(x)  # 64
+    x = Conv2d_BN(x, 80, (3, 3), strides=(1, 1), padding='valid')  # 80
+    x = Conv2d_BN(x, 192, (3, 3), strides=(2, 2), padding='valid')  # 192
+    x = Conv2d_BN(x, 288, (3, 3), strides=(1, 1), padding='same')  # 288
+    x = InceptionT1(x, 192)  # 768
+    x = InceptionT1(x, 192)  # 768
+    x = InceptionT1(x, 192, strides=(2, 2))  # 768
+    x = InceptionT2(x, 320)  # 1280
+    x = InceptionT2(x, 320)  # 1280
+    x = InceptionT2(x, 320)  # 1280
+    x = InceptionT2(x, 320)  # 1280
+    x = InceptionT2(x, 320, strides=(2, 2), stride1=(2, 1), stride2=(1, 2))  # 1280
+    x = InceptionT3(x, 341)  # 2048
+    x = InceptionT3(x, 341, strides=(1, 1))  # 2048
+    x = AveragePooling2D(pool_size=(9, 9), strides=(9, 9), padding='same')(x)
+    x = Flatten()(x)
+    x = Dense(1000, activation='relu')(x)
+    x = Dense(500, activation='relu')(x)
+    x = Dense(1, activation='softmax')(x)
+    model = Model(inpt, x, name='inception')
+    return model
+
+
+if __name__ == "__main__":
+    model = creatcnn()
+
+    # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    #
+    # train_datagen = ImageDataGenerator(
+    #     shear_range=0.2,
+    #     zoom_range=0.2,
+    #     horizontal_flip=True)
+    #
+    # test_datagen = ImageDataGenerator()
+    #
+    # train_generator = train_datagen.flow_from_directory(
+    #     'data/train',
+    #     target_size=(299, 299),
+    #     batch_size=10,
+    #     class_mode='binary')
+    #
+    # validation_generator = test_datagen.flow_from_directory(
+    #     'data/validation',
+    #     target_size=(299, 299),
+    #     batch_size=10,
+    #     class_mode='binary')
+    #
+    # model.fit_generator(
+    #     train_generator,
+    #     steps_per_epoch=97,
+    #     epochs=50,
+    #     validation_data=validation_generator,
+    #     validation_steps=7,
+    #     verbose=2)
+    # model.save_weights('GoogleNet_weight.h5')
+
+    model.load_weights('GoogleNet_weight.h5')
+    img = tf.io.read_file('D:/pycharmfile/Inception/data/train/dog/2.png')
+    img = tf.image.decode_png(img,channels=3)
+    img = tf.image.resize(img,(299,299),method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    # img=tf.cast(img,tf.float32)/255
+    img=tf.expand_dims(img,0)
+    result=model(img)
+    result=result.numpy()
+    print(result)
